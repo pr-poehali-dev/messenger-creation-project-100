@@ -394,8 +394,70 @@ function MissedTab() {
   );
 }
 
+function SettingsScreen({ onClose }: { onClose: () => void }) {
+  const sections = [
+    { icon: "User", label: "Профиль", desc: "Имя, фото, статус", color: "text-purple-400", bg: "bg-purple-500/15" },
+    { icon: "Bell", label: "Уведомления", desc: "Звуки, вибрация, баннеры", color: "text-cyan-400", bg: "bg-cyan-500/15" },
+    { icon: "Lock", label: "Конфиденциальность", desc: "Безопасность, блокировка", color: "text-green-400", bg: "bg-green-500/15" },
+    { icon: "Palette", label: "Оформление", desc: "Тема, шрифт, фон", color: "text-pink-400", bg: "bg-pink-500/15" },
+    { icon: "Mic", label: "Голос и видео", desc: "Микрофон, камера, качество", color: "text-orange-400", bg: "bg-orange-500/15" },
+    { icon: "HardDrive", label: "Хранилище", desc: "Кэш, загрузки, медиа", color: "text-blue-400", bg: "bg-blue-500/15" },
+    { icon: "HelpCircle", label: "Помощь", desc: "FAQ, поддержка", color: "text-white/50", bg: "bg-white/5" },
+  ];
+
+  return (
+    <div className="flex flex-col h-full animate-fade-in">
+      <div className="glass px-5 pt-10 pb-4 flex-shrink-0 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <button onClick={onClose} className="p-2 rounded-xl hover:bg-white/10 transition-all">
+            <Icon name="ChevronLeft" size={20} className="text-white/70" />
+          </button>
+          <h2 className="text-2xl font-bold text-white font-golos">Настройки</h2>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto scrollbar-hide">
+        <div className="px-4 py-4">
+          <div className="glass rounded-2xl p-4 flex items-center gap-4 mb-4 border border-purple-500/20">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-2xl font-bold text-white font-golos flex-shrink-0">
+              Я
+            </div>
+            <div>
+              <div className="font-bold text-white text-base">Мой профиль</div>
+              <div className="text-sm text-white/50 mt-0.5">+7 900 000-00-00</div>
+              <div className="text-xs text-purple-400 mt-1">Изменить профиль →</div>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            {sections.map((s, i) => (
+              <button key={s.label} className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl hover:bg-white/5 transition-all animate-slide-up" style={{ animationDelay: `${i * 0.04}s` }}>
+                <div className={`w-9 h-9 rounded-xl ${s.bg} flex items-center justify-center flex-shrink-0`}>
+                  <Icon name={s.icon} size={18} className={s.color} />
+                </div>
+                <div className="flex-1 text-left">
+                  <div className="font-semibold text-white text-sm">{s.label}</div>
+                  <div className="text-xs text-white/40 mt-0.5">{s.desc}</div>
+                </div>
+                <Icon name="ChevronRight" size={16} className="text-white/25" />
+              </button>
+            ))}
+          </div>
+
+          <button className="w-full mt-4 py-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all">
+            <span className="text-sm font-semibold text-red-400">Выйти из аккаунта</span>
+          </button>
+
+          <p className="text-center text-[10px] text-white/20 mt-4">NOVA v1.0 · Мессенджер нового поколения</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Index() {
   const [activeTab, setActiveTab] = useState("chats");
+  const [showSettings, setShowSettings] = useState(false);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -407,6 +469,19 @@ export default function Index() {
       default: return null;
     }
   };
+
+  if (showSettings) {
+    return (
+      <div className="min-h-screen mesh-bg flex items-center justify-center p-4">
+        <div
+          className="w-full max-w-sm h-[800px] glass-strong rounded-[2.5rem] overflow-hidden flex flex-col"
+          style={{ boxShadow: "0 0 100px rgba(147,82,255,0.18), 0 50px 100px rgba(0,0,0,0.6)" }}
+        >
+          <SettingsScreen onClose={() => setShowSettings(false)} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen mesh-bg flex items-center justify-center p-4">
@@ -428,7 +503,7 @@ export default function Index() {
                 </button>
                 <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center text-[9px] font-bold text-white">7</span>
               </div>
-              <button className="w-9 h-9 glass rounded-xl flex items-center justify-center hover:bg-white/10 transition-all">
+              <button onClick={() => setShowSettings(true)} className="w-9 h-9 glass rounded-xl flex items-center justify-center hover:bg-white/10 transition-all">
                 <Icon name="Settings" size={16} className="text-white/60" />
               </button>
             </div>
