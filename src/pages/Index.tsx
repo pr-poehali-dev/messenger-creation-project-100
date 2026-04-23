@@ -3,10 +3,11 @@ import Icon from "@/components/ui/icon";
 
 const AUTH_URL = "https://functions.poehali.dev/1319dde5-8aaa-4527-bc05-6f881f9ec31b";
 const MSG_URL = "https://functions.poehali.dev/5260fb1d-a6f5-4f5d-8868-993109c82935";
+const VOICE_URL = "https://functions.poehali.dev/af40a866-feea-4f82-a09b-73dcbc3df0c8";
 
 type User = { id: number; name: string; email: string; avatar_color: string };
 type ChatItem = { user_id: number; name: string; avatar_color: string; conv_id: number | null; last_msg: string; last_time: string };
-type Message = { id: number; sender_id: number; sender_name: string; text: string; time: string };
+type Message = { id: number; sender_id: number; sender_name: string; text: string; time: string; voice_url?: string };
 type Contact = { id: number; name: string; avatar_color: string };
 
 const TABS = [
@@ -93,12 +94,52 @@ function AuthScreen({ onLogin }: { onLogin: (user: User) => void }) {
   );
 }
 
+function VoicePlayer({ url, isOut }: { url: string; isOut: boolean }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) { a.pause(); setPlaying(false); }
+    else { a.play(); setPlaying(true); }
+  };
+
+  return (
+    <div className="flex items-center gap-2 min-w-[160px]">
+      <audio ref={audioRef} src={url}
+        onTimeUpdate={e => { const a = e.currentTarget; setProgress(a.duration ? a.currentTime / a.duration : 0); }}
+        onLoadedMetadata={e => setDuration(e.currentTarget.duration)}
+        onEnded={() => { setPlaying(false); setProgress(0); }} />
+      <button onClick={toggle} className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isOut ? "bg-white/20 hover:bg-white/30" : "bg-purple-500/30 hover:bg-purple-500/50"} transition-all`}>
+        <Icon name={playing ? "Pause" : "Play"} size={14} className="text-white" />
+      </button>
+      <div className="flex-1 flex flex-col gap-1">
+        <div className="h-1 rounded-full bg-white/20 overflow-hidden">
+          <div className="h-full rounded-full bg-white/70 transition-all" style={{ width: `${progress * 100}%` }} />
+        </div>
+        <span className="text-[10px] text-white/50">
+          {duration ? `${Math.floor(duration)}с` : "🎤"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function ChatView({ me, contact, convId, onBack }: { me: User; contact: Contact; convId: number | null; onBack: (newConvId?: number) => void }) {
   const [msgs, setMsgs] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [currentConvId, setCurrentConvId] = useState<number | null>(convId);
+  const [recording, setRecording] = useState(false);
+  const [sendingVoice, setSendingVoice] = useState(false);
+  const [recSeconds, setRecSeconds] = useState(0);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadMessages = async (cid: number) => {
     const res = await fetch(MSG_URL, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -126,8 +167,51 @@ function ChatView({ me, contact, convId, onBack }: { me: User; contact: Contact;
       body: JSON.stringify({ action: "send_message", user_id: me.id, to_user_id: contact.id, conv_id: currentConvId, text }) });
     const raw = await res.json();
     const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-    if (data.conv_id && !currentConvId) setCurrentConvId(data.conv_id);
-    if (currentConvId || data.conv_id) loadMessages(currentConvId || data.conv_id);
+    const cid = currentConvId || data.conv_id;
+    if (!currentConvId && cid) setCurrentConvId(cid);
+    if (cid) loadMessages(cid);
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = [];
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setRecording(true);
+      setRecSeconds(0);
+      timerRef.current = setInterval(() => setRecSeconds(s => s + 1), 1000);
+    } catch {
+      alert("Нет доступа к микрофону");
+    }
+  };
+
+  const stopRecording = () => {
+    const mr = mediaRecorderRef.current;
+    if (!mr) return;
+    mr.onstop = async () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      setRecording(false);
+      setSendingVoice(true);
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const b64 = (reader.result as string).split(",")[1];
+        const res = await fetch(VOICE_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user_id: me.id, to_user_id: contact.id, conv_id: currentConvId, audio: b64 }) });
+        const raw = await res.json();
+        const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+        const cid = currentConvId || data.conv_id;
+        if (!currentConvId && cid) setCurrentConvId(cid);
+        if (cid) loadMessages(cid);
+        setSendingVoice(false);
+      };
+      reader.readAsDataURL(blob);
+      mr.stream.getTracks().forEach(t => t.stop());
+    };
+    mr.stop();
   };
 
   return (
@@ -160,7 +244,10 @@ function ChatView({ me, contact, convId, onBack }: { me: User; contact: Contact;
             <div key={m.id} className={`flex ${isOut ? "justify-end" : "justify-start"} animate-fade-in`}>
               {!isOut && <div className="mr-2 mt-auto"><Avatar name={contact.name} color={contact.avatar_color} size="sm" /></div>}
               <div className={`max-w-[72%] px-4 py-2.5 ${isOut ? "bubble-out" : "bubble-in"}`}>
-                <p className="text-sm text-white leading-relaxed">{m.text}</p>
+                {m.voice_url
+                  ? <VoicePlayer url={m.voice_url} isOut={isOut} />
+                  : <p className="text-sm text-white leading-relaxed">{m.text}</p>
+                }
                 <p className={`text-[10px] mt-1 ${isOut ? "text-white/50 text-right" : "text-white/40"}`}>{m.time}</p>
               </div>
             </div>
@@ -170,12 +257,32 @@ function ChatView({ me, contact, convId, onBack }: { me: User; contact: Contact;
       </div>
 
       <div className="glass-strong px-4 py-3 flex items-center gap-2 border-t border-white/5 flex-shrink-0">
-        <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
-          placeholder="Сообщение..."
-          className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 text-sm text-white placeholder:text-white/30 outline-none focus:border-purple-500/50 transition-all" />
-        <button onClick={send} className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-violet-600 flex items-center justify-center neon-glow-purple hover:scale-105 transition-all flex-shrink-0">
-          <Icon name="Send" size={15} className="text-white" />
-        </button>
+        {recording ? (
+          <>
+            <div className="flex-1 flex items-center gap-2 bg-red-500/10 border border-red-500/30 rounded-2xl px-4 py-2.5">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+              <span className="text-sm text-red-300">Запись... {recSeconds}с</span>
+            </div>
+            <button onClick={stopRecording} className="w-9 h-9 rounded-xl bg-red-500/20 border border-red-500/40 flex items-center justify-center hover:bg-red-500/40 transition-all flex-shrink-0">
+              <Icon name="Square" size={14} className="text-red-400" />
+            </button>
+          </>
+        ) : (
+          <>
+            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === "Enter" && send()}
+              placeholder="Сообщение..."
+              className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-4 py-2.5 text-sm text-white placeholder:text-white/30 outline-none focus:border-purple-500/50 transition-all" />
+            {input.trim() ? (
+              <button onClick={send} className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-600 to-violet-600 flex items-center justify-center neon-glow-purple hover:scale-105 transition-all flex-shrink-0">
+                <Icon name="Send" size={15} className="text-white" />
+              </button>
+            ) : (
+              <button onClick={startRecording} disabled={sendingVoice} className="w-9 h-9 rounded-xl bg-white/8 border border-white/10 flex items-center justify-center hover:bg-purple-500/20 hover:border-purple-500/40 transition-all flex-shrink-0 disabled:opacity-40">
+                <Icon name={sendingVoice ? "Loader" : "Mic"} size={16} className={sendingVoice ? "text-white/40 animate-spin" : "text-white/60"} />
+              </button>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

@@ -65,7 +65,7 @@ def handler(event: dict, context) -> dict:
         conv_id = int(body.get("conv_id") or params.get("conv_id") or 0)
         cur.execute("""
             SELECT m.id, m.sender_id, u.name, m.text,
-                   to_char(m.created_at, 'HH24:MI') as time
+                   to_char(m.created_at, 'HH24:MI') as time, m.voice_url
             FROM messages m
             JOIN users u ON u.id = m.sender_id
             WHERE m.conversation_id = %s
@@ -73,7 +73,7 @@ def handler(event: dict, context) -> dict:
         """, (conv_id,))
         rows = cur.fetchall()
         conn.close()
-        msgs = [{"id": r[0], "sender_id": r[1], "sender_name": r[2], "text": r[3], "time": r[4]} for r in rows]
+        msgs = [{"id": r[0], "sender_id": r[1], "sender_name": r[2], "text": r[3], "time": r[4], "voice_url": r[5]} for r in rows]
         return {"statusCode": 200, "headers": headers, "body": json.dumps({"messages": msgs})}
 
     elif action == "send_message":
