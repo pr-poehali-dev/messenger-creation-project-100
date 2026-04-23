@@ -1,0 +1,12 @@
+{
+  "tests": [
+    {
+      "name": "Login user",
+      "method": "POST",
+      "path": "/",
+      "body": {"action": "login", "email": "test@nova.com", "password": "123456"},
+      "expectedStatus": 200,
+      "bodyMatcher": "none"
+    }
+  ]
+}
